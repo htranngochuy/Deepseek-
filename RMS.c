@@ -8,10 +8,12 @@
 #define EPS 1e-6f 
 #define D_MODEL 4096 
 
-// Dinh nghia bf16 
+
 typedef struct {
     uint16_t bits; 
 } bf16; 
+
+
 float bf16_to_fp32(bf16 b) {
     uint32_t sign     = (b.bits >> 15);
     uint32_t exponent = (b.bits >> 7) & 0xFF;
@@ -24,6 +26,7 @@ float bf16_to_fp32(bf16 b) {
     return result;
 }
  
+
 bf16 fp32_to_bf16(float f) {
     uint32_t fp32_bits;
     memcpy(&fp32_bits, &f, sizeof(fp32_bits));
@@ -38,6 +41,7 @@ bf16 fp32_to_bf16(float f) {
     return b;
 }
 
+
 void rmsnorm (bf16 *input, bf16 *output, int size) {
     float sum = 0.0f; 
     for (int i = 0; i < size; i++) {
@@ -51,6 +55,8 @@ void rmsnorm (bf16 *input, bf16 *output, int size) {
         output[i] = fp32_to_bf16(val / (rms + EPS)); 
     }
 }
+
+
 void flatten (bf16 *input, bf16 *output, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -58,6 +64,8 @@ void flatten (bf16 *input, bf16 *output, int rows, int cols) {
         }
     }
 }
+
+
 int main () {
     //bf16 b = fp32_to_bf16(16.45f); 
     bf16 X_l [N_hc][D_MODEL]; 
