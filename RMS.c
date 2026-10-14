@@ -13,11 +13,11 @@ typedef struct {
     uint16_t bits; 
 } bf16; 
 float bf16_to_fp32(bf16 b) {
-    uint32_t sign     = (b.bits >> 15) & 0x1;
+    uint32_t sign     = (b.bits >> 15);
     uint32_t exponent = (b.bits >> 7) & 0xFF;
     uint32_t mantissa = b.bits & 0x7F;
  
-    uint32_t mant = mantissa << 16;  // 7 bit mantissa -> 7 bit dau cua truong 23 bit
+    uint32_t mant = mantissa << 16;  
     uint32_t fp32_bits = (sign << 31) | (exponent << 23) | mant;
     float result;
     memcpy(&result, &fp32_bits, sizeof(result));
@@ -28,11 +28,11 @@ bf16 fp32_to_bf16(float f) {
     uint32_t fp32_bits;
     memcpy(&fp32_bits, &f, sizeof(fp32_bits));
  
-    uint32_t sign     = (fp32_bits >> 31) & 0x1;
+    uint32_t sign     = (fp32_bits >> 31);
     uint32_t exponent = (fp32_bits >> 23) & 0xFF;
     uint32_t mantissa = fp32_bits & 0x7FFFFF;
  
-    uint32_t mant = mantissa >> 16;  // giu 7 bit dau cua mantissa
+    uint32_t mant = mantissa >> 16;  
     bf16 b;
     b.bits = (uint16_t)((sign << 15) | (exponent << 7) | mant);
     return b;
