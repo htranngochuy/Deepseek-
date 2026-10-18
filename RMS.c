@@ -59,9 +59,9 @@ void flatten (int rows, int cols, bf16 input[rows][cols], bf16 *output) {
     }
 }
 
-void check_bit () { 
+void check_bit () 
+{ 
     float f = 16.45f; 
-    // Chuyen qua uint16_t
     uint32_t check; 
     memcpy (&check, &f, sizeof(check)); 
 
@@ -70,11 +70,11 @@ void check_bit () {
     uint32_t check16;
     memcpy(&check16, &b16, sizeof(check16));
 
-    // In kết quả ra để so sánh bit thô
     printf("Gia tri goc (Float)    : %.4f\n", f);
     printf("Gia tri phuc hoi (BF16): %.4f\n", b16);
     printf("Hex goc (FP32)    : 0x%08X\n", check);
     printf("Hex phuc hoi (FP32)    : 0x%08X\n", check16);
+}
 int main () {
     //bf16 b = fp32_to_bf16(16.45f); 
     bf16 X_l [N_HC][D_MODEL]; 
@@ -111,6 +111,8 @@ int main () {
         //return 0; 
         //d++; 
     }
-    check_bit(); 
+    check_bit();
+    //bf16 b = fp32_to_bf16(16.45f); 
+    //printf ("kich thuoc cua bf16: %zu bytes\n", sizeof(bf16));
     return 0; 
 }
