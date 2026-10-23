@@ -124,11 +124,6 @@ int main()
     int *token_ids = malloc(sizeof(int[N]));                                  
     float (*weight)[TOPK_EXPERT] = malloc(sizeof(float[N][TOPK_EXPERT]));     
     int (*indice)[TOPK_EXPERT] = malloc(sizeof(int[N][TOPK_EXPERT]));         
-    if (!x || !WR || !bias || !hash_id || !token_ids || !weight || !indice)
-    {
-        fprintf(stderr, "het bo nho\n");
-        return 1;
-    }
 
     for (int i = 0; i < N; i++)
         for (int j = 0; j < D_MODEL; j++)
