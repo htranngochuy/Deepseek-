@@ -13,66 +13,86 @@
 #define SCALED 1.5f
 #define HASH_LAYER 3
 
-float sqrt_softplus(float x)
+typedef struct
 {
-    float t;
-    t = sqrt(logf(1.0f + expf(x)));
-    return t;
+    uint16_t bits;
+} bf16;
+
+float bf16_to_fp32(bf16 b)
+{
+    uint32_t sign = ((uint32_t)(b.bits & 0x8000)) << 16;
+    uint32_t exponent = ((uint32_t)(b.bits & 0x7F80)) << 16;
+    uint32_t mantissa = ((uint32_t)(b.bits & 0x007F)) << 16;
+    uint32_t fp32_bits = sign | exponent | mantissa;
+    float result;
+    memcpy(&result, &fp32_bits, sizeof(result));
+    return result;
 }
 
-void g_score(int N_token, float input[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT], float output[N_token][D_EXPERT])
+bf16 fp32_to_bf16(float f)
+{
+    uint32_t fp32_bits;
+    memcpy(&fp32_bits, &f, sizeof(fp32_bits));
+    uint16_t sign = (fp32_bits & 0x80000000u) >> 16;
+    uint16_t expo = (fp32_bits & 0x7F800000u) >> 16;
+    uint16_t mant = (fp32_bits & 0x007F0000u) >> 16;
+    bf16 b = {(uint16_t)(sign | expo | mant)};
+    return b;
+}
+
+float sqrt_softplus(float x)
+{
+    float sp = (x > 20.0f) ? x : log1pf(expf(x));
+    return sqrtf(sp);
+}
+void g_score(int N_token, bf16 x[N_token][D_MODEL], bf16 WR[D_MODEL][D_EXPERT], bf16 g[N_token][D_EXPERT])
 {
     for (int i = 0; i < N_token; i++)
     {
+        float mul[D_EXPERT] = {0.0f};
         for (int j = 0; j < D_MODEL; j++)
         {
+            float t = bf16_to_fp32(x[i][j]);
             for (int k = 0; k < D_EXPERT; k++)
-            {
-                output[i][k] += input[i][j] * WR[j][k];
-                output[i][k] = sqrt_softplus(output[i][k]);
-            }
+                mul[k] += t * bf16_to_fp32(WR[j][k]);
         }
+        for (int k = 0; k < D_EXPERT; k++)
+            g[i][k] = fp32_to_bf16(mul[k]);
     }
+}
+
+void g_activate(int N_token, bf16 g[N_token][D_EXPERT], bf16 gp[N_token][D_EXPERT])
+{
+    for (int i = 0; i < N_token; i++)
+        for (int k = 0; k < D_EXPERT; k++)
+            gp[i][k] = fp32_to_bf16(sqrt_softplus(bf16_to_fp32(g[i][k])));
 }
 
 void hash_lookup(int N_token, int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT])
 {
-    for (int i = 0; i < N_token; i++)
-    {
+    for (int i = 0; i < N_token; i++) {
         for (int j = 0; j < TOPK_EXPERT; j++)
-        {
             indice[i][j] = hash_id[token_ids[i]][j];
-        }
     }
-}
 
-void g_normalize(int N_token, float g[N_token][D_EXPERT], int indice[N_token][TOPK_EXPERT], float weight[N_token][TOPK_EXPERT])
+}
+void g_normalize(int N_token, bf16 gp[N_token][D_EXPERT], int indice[N_token][TOPK_EXPERT], bf16 weight[N_token][TOPK_EXPERT])
 {
     for (int i = 0; i < N_token; i++)
     {
+        float gf[TOPK_EXPERT];
         float sum = 0.0f;
         for (int j = 0; j < TOPK_EXPERT; j++)
         {
-            weight[i][j] = g[i][indice[i][j]];
-            sum += g[i][indice[i][j]];
+            gf[j] = bf16_to_fp32(gp[i][indice[i][j]]);
+            sum += gf[j];
         }
         for (int j = 0; j < TOPK_EXPERT; j++)
-        {
-            weight[i][j] = (weight[i][j] / sum) * SCALED;
-        }
+            weight[i][j] = fp32_to_bf16(gf[j] / sum * SCALED);
     }
 }
 
-void router1_3(int N_token, int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], float x[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT], int indice[N_token][TOPK_EXPERT], float weight[N_token][TOPK_EXPERT])
-{
-    float g_score_out[N_token][D_EXPERT];
-    memset(g_score_out, 0, sizeof(g_score_out));
-    g_score(N_token, x, WR, g_score_out);
-    hash_lookup(N_token, token_ids, hash_id, indice);
-    g_normalize(N_token, g_score_out, indice, weight);
-}
-
-void arg_topk(int N_token, float g[N_token][D_EXPERT], float bias[D_EXPERT], int indice[N_token][TOPK_EXPERT])
+void arg_topk(int N_token, bf16 g[N_token][D_EXPERT], float bias[D_EXPERT], int indice[N_token][TOPK_EXPERT])
 {
     for (int i = 0; i < N_token; i++)
     {
@@ -83,8 +103,8 @@ void arg_topk(int N_token, float g[N_token][D_EXPERT], float bias[D_EXPERT], int
             int max_idx = -1;
             for (int k = 0; k < D_EXPERT; k++)
             {
-                float val = g[i][k] + bias[k];
-                if (val > max_val && mark[k] == 0)
+                float val = bf16_to_fp32(g[i][k]) + bias[k];
+                if (mark[k] == 0 && val > max_val)
                 {
                     max_val = val;
                     max_idx = k;
@@ -96,18 +116,33 @@ void arg_topk(int N_token, float g[N_token][D_EXPERT], float bias[D_EXPERT], int
     }
 }
 
-void router4(int N_token, float x[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT], float bias[D_EXPERT], float weight[N_token][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT])
+void router1_3(int N_token, int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], bf16 x[N_token][D_MODEL], bf16 WR[D_MODEL][D_EXPERT], int indice[N_token][TOPK_EXPERT], bf16 weight[N_token][TOPK_EXPERT])
 {
-    float g_score_out[N_token][D_EXPERT];
-    memset(g_score_out, 0, sizeof(g_score_out));
-    g_score(N_token, x, WR, g_score_out);
-    arg_topk(N_token, g_score_out, bias, indice);
-    g_normalize(N_token, g_score_out, indice, weight);
+    bf16(*g)[D_EXPERT] = malloc(sizeof(bf16[N_token][D_EXPERT]));
+    bf16(*gp)[D_EXPERT] = malloc(sizeof(bf16[N_token][D_EXPERT]));
+    g_score(N_token, x, WR, g);
+    g_activate(N_token, g, gp);
+    hash_lookup(N_token, token_ids, hash_id, indice);
+    g_normalize(N_token, gp, indice, weight);
+    free(g);
+    free(gp);
 }
 
-int router_layer(int layer, int N_token, float x[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT], float bias[D_EXPERT], int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], float weight[N_token][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT])
+void router4(int N_token, bf16 x[N_token][D_MODEL], bf16 WR[D_MODEL][D_EXPERT], float bias[D_EXPERT], bf16 weight[N_token][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT])
 {
-    if (layer < HASH_LAYER)
+    bf16(*g)[D_EXPERT] = malloc(sizeof(bf16[N_token][D_EXPERT]));
+    bf16(*gp)[D_EXPERT] = malloc(sizeof(bf16[N_token][D_EXPERT]));
+    g_score(N_token, x, WR, g);
+    g_activate(N_token, g, gp);
+    arg_topk(N_token, gp, bias, indice);
+    g_normalize(N_token, gp, indice, weight);
+    free(g);
+    free(gp);
+}
+
+int router_layer(int layer, int N_token, bf16 x[N_token][D_MODEL], bf16 WR[D_MODEL][D_EXPERT], float bias[D_EXPERT], int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], bf16 weight[N_token][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT])
+{
+    if (layer <= HASH_LAYER)
         router1_3(N_token, token_ids, hash_id, x, WR, indice, weight);
     else
         router4(N_token, x, WR, bias, weight, indice);
@@ -117,20 +152,20 @@ int router_layer(int layer, int N_token, float x[N_token][D_MODEL], float WR[D_M
 int main()
 {
     const int N = 4;
-    float (*x)[D_MODEL] = malloc(sizeof(float[N][D_MODEL]));                  
-    float (*WR)[D_EXPERT] = malloc(sizeof(float[D_MODEL][D_EXPERT]));         
-    float *bias = malloc(sizeof(float[D_EXPERT]));                           
+    bf16(*x)[D_MODEL] = malloc(sizeof(bf16[N][D_MODEL]));
+    bf16(*WR)[D_EXPERT] = malloc(sizeof(bf16[D_MODEL][D_EXPERT]));
+    float *bias = malloc(sizeof(float[D_EXPERT]));
     int (*hash_id)[TOPK_EXPERT] = malloc(sizeof(int[SIZE_LUT][TOPK_EXPERT]));
-    int *token_ids = malloc(sizeof(int[N]));                                  
-    float (*weight)[TOPK_EXPERT] = malloc(sizeof(float[N][TOPK_EXPERT]));     
-    int (*indice)[TOPK_EXPERT] = malloc(sizeof(int[N][TOPK_EXPERT]));         
+    int *token_ids = malloc(sizeof(int[N]));
+    bf16(*weight)[TOPK_EXPERT] = malloc(sizeof(bf16[N][TOPK_EXPERT]));
+    int (*indice)[TOPK_EXPERT] = malloc(sizeof(int[N][TOPK_EXPERT]));
 
     for (int i = 0; i < N; i++)
         for (int j = 0; j < D_MODEL; j++)
-            x[i][j] = (rand() % 100) / 10.0f;
+            x[i][j] = fp32_to_bf16((rand() % 100) / 10.0f);
     for (int j = 0; j < D_MODEL; j++)
         for (int k = 0; k < D_EXPERT; k++)
-            WR[j][k] = (rand() % 100) / 10.0f * 0.05f;
+            WR[j][k] = fp32_to_bf16((rand() % 100) / 10.0f * 0.05f);
     for (int k = 0; k < D_EXPERT; k++)
         bias[k] = (rand() % 100) / 10.0f * 0.1f;
 
@@ -166,13 +201,13 @@ int main()
             printf("  token %-6d  ", token_ids[i]);
             for (int j = 0; j < TOPK_EXPERT; j++)
                 printf(" %3d", indice[i][j]);
-            
-            /*for (int j = 0; j < TOPK_EXPERT; j++)
+
+            for (int j = 0; j < TOPK_EXPERT; j++)
             {
-                printf(" %.4f", weight[i][j]);
-                sum += weight[i][j];
-            }*/
-            printf ("\n");
+                printf(" %.4f", bf16_to_fp32(weight[i][j]));
+                sum += bf16_to_fp32(weight[i][j]);
+            }
+            printf("\n");
         }
     }
 
