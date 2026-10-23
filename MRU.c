@@ -89,7 +89,7 @@ void router4 (int N_token, float x[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT
 }
 
 int router_layer (int layer, int N_token, float x[N_token][D_MODEL], float WR[D_MODEL][D_EXPERT], float bias[D_EXPERT], int token_ids[N_token], int hash_id[SIZE_LUT][TOPK_EXPERT], float weight[N_token][TOPK_EXPERT], int indice[N_token][TOPK_EXPERT]) {
-    if (layer <= HASH_LAYER) 
+    if (layer < HASH_LAYER) 
         router1_3(N_token, token_ids, hash_id, x, WR, indice, weight); 
     else
     router4(N_token, x, WR, bias, token_ids, hash_id, weight, indice); 
