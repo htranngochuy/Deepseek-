@@ -93,7 +93,7 @@ int main () {
         for (int j=0; j<D_MODEL; j++) {
             if (x_flat[i * D_MODEL + j].bits != X_l[i][j].bits) {
                 printf ("Lam phang khong dung\n");
-                return 0; 
+                return 1; 
             }
         }
     }
