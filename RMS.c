@@ -35,26 +35,47 @@ bf16 fp32_to_bf16(float f) {
     return b;
 }
 
+typedef struct {
+    bf16 i_x[N_HC][D_MODEL];
+    //float i_y[N_HC * D_MODEL];
+} RAB_format; 
 
-void rmsnorm (bf16 *input, float *output, int size, float *gamma) {
-    float sum  = 0.0f;
-    for (int i=0; i<size; i++) {
-        float val = bf16_to_fp32(input[i]);
+typedef struct {
+    float gamma; 
+    bf16 x_i_flatten[N_HC * D_MODEL];
+    float sum_xi_squared[N_HC * D_MODEL];
+    float rms;
+    float y_i[N_HC * D_MODEL];
+} registers_format; 
+
+void load_i_x (RAB_format *RAB, bf16 i_x[N_HC][D_MODEL]) {
+    for (int i=0; i<N_HC; i++) {
+        for (int j=0; j<D_MODEL; j++) {
+            RAB->i_x[i][j] = i_x[i][j]; 
+        }
+    }
+}
+
+void rmsnorm (registers_format *regs, float gamma, int size) {
+    float sum = 0.0f;
+    for (int i = 0; i < size; i++) {
+        float val = bf16_to_fp32(regs->x_i_flatten[i]);
         sum += val * val;
     }
+    regs->sum_xi_squared[0] = sum; 
     float mean = sum / size + EPS;
-    float rms = sqrt (mean); 
-    for (int i=0; i<size; i++) {
-        float val = bf16_to_fp32(input[i]);
-        output[i] = gamma[i] * val / rms; 
+    regs->rms = sqrt(mean); 
+    for (int i = 0; i < size; i++) {
+        float val = bf16_to_fp32(regs->x_i_flatten[i]);
+        regs->y_i[i] = gamma * val / regs->rms; 
     }
 }
 
 
-void flatten (int rows, int cols, bf16 input[rows][cols], bf16 *output) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            output[i * cols + j] = input[i][j]; 
+void flatten (RAB_format *rab, registers_format *regs) {
+    for (int i = 0; i < N_HC; i++) {
+        for (int j = 0; j < D_MODEL; j++) {
+            regs->x_i_flatten[i * D_MODEL + j] = rab->i_x[i][j]; 
         }
     }
 }
@@ -78,7 +99,7 @@ void check_bit ()
 int main () {
     //bf16 b = fp32_to_bf16(16.45f); 
     bf16 X_l [N_HC][D_MODEL]; 
-    bf16 x_flat [N_HC * D_MODEL]; 
+    //bf16 x_flat [N_HC * D_MODEL]; 
     float y_l [N_HC * D_MODEL];
     // Khoi tao ngau nhien cho ma tran X_l
     for (int i = 0; i < N_HC; i++) {
@@ -87,11 +108,14 @@ int main () {
         }
     }
     //int d = 0;
-    flatten (N_HC, D_MODEL, X_l, x_flat);
+    RAB_format rab;
+    registers_format regs;
+    load_i_x(&rab, X_l);
+    flatten(&rab, &regs);
     // Kiem tra flatten 
     for (int i=0; i<N_HC; i++) {
         for (int j=0; j<D_MODEL; j++) {
-            if (x_flat[i * D_MODEL + j].bits != X_l[i][j].bits) {
+            if (regs.x_i_flatten[i * D_MODEL + j].bits != X_l[i][j].bits) {
                 printf ("Lam phang khong dung\n");
                 return 0; 
             }
@@ -99,14 +123,11 @@ int main () {
     }
     printf ("Lam phang dung \n");
     // Khoi tao gamma 
-    float gamma [N_HC * D_MODEL];
-    for (int i=0; i<N_HC*D_MODEL; i++) {
-        gamma[i] = 1.0f;
-    }
-    rmsnorm (x_flat, y_l, N_HC * D_MODEL, gamma);   
+    float gamma  = 1.0f;
+    rmsnorm (&regs, gamma, N_HC * D_MODEL);   
     //int d = 0; 
     for (int i=0; i<N_HC * D_MODEL; i++) {
-        printf ("%.6f ", y_l[i]);
+        printf ("%.6f ", regs.y_i[i]);
         break; 
         //return 0; 
         //d++; 
