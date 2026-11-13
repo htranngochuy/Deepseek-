@@ -20,65 +20,12 @@ DA1/
     └── main.c             chương trình chạy thử
 ```
 
-## Cách chạy (không cần make)
 
-Chỉ cần có `gcc`. Mở terminal **ở thư mục gốc `DA1`** (thư mục chứa `include/`, `source/`, `test/`).
 
-### Windows (PowerShell)
+### PowerShell
 
 ```powershell
-gcc -O2 -Wall -Wextra -Iinclude -o main test/main.c source/data_type.c source/kernel.c source/load.c -lm
-.\main
+gcc -std=c11 -Wall -Wextra -Iinclude test/main.c source/data_type.c source/load.c source/kernel.c -lm -o test/app.exe
 ```
+Sau khi hiện ra được file app.exe thì chạy lệnh .\test\app.exe trong PS 
 
-### Linux / macOS
-
-```bash
-gcc -O2 -Wall -Wextra -Iinclude -o main test/main.c source/data_type.c source/kernel.c source/load.c -lm
-./main
-```
-
-Ý nghĩa các cờ:
-
-| Cờ | Tác dụng |
-|---|---|
-| `-Iinclude` | chỉ cho compiler tìm file `.h` trong thư mục `include/` |
-| `-lm` | liên kết thư viện toán (cần cho `sqrt`) |
-| `-Wall -Wextra` | bật cảnh báo |
-| `-o main` | đặt tên file chạy là `main` (`main.exe` trên Windows) |
-
-Phải liệt kê từng file `.c` trong `source/`. Nếu thêm file `.c` mới thì thêm tên nó vào lệnh.
-
-## Kết quả
-
-Chương trình chạy xong sẽ in các giá trị `y_i` (đầu ra RMSNorm, fp32) của token cuối cùng rồi thoát bình thường.
-
-## Cài gcc nếu chưa có
-
-- **Windows:** cài MSYS2 hoặc MinGW-w64, rồi thêm thư mục `bin` của nó vào biến môi trường `PATH`. Kiểm tra bằng `gcc --version`.
-- **Ubuntu/Debian:** `sudo apt install build-essential`
-- **macOS:** `xcode-select --install`
-
-## Lỗi thường gặp
-
-| Thông báo | Nguyên nhân và cách sửa |
-|---|---|
-| `gcc is not recognized` | chưa cài gcc hoặc chưa thêm vào `PATH` |
-| `'xxx.h' file not found` | chưa chạy ở thư mục gốc `DA1`, hoặc thiếu `-Iinclude` |
-| `undefined reference to ...` | thiếu một file `.c` trong lệnh biên dịch |
-| `undefined reference to 'sqrt'` | thiếu `-lm` ở cuối lệnh |
-
-## Dùng make (tuỳ chọn)
-
-Nếu có `Makefile` ở thư mục gốc và máy có `make`:
-
-```
-make run                # Windows (MinGW): mingw32-make run
-```
-
-Nếu `make` không chạy được thì dùng lệnh `gcc` ở trên, kết quả giống nhau.
-
-## Ghi chú
-
-- `RMS.c` ở thư mục gốc là bản cũ, không nằm trong lệnh biên dịch ở trên.
-- `gamma` hiện là một số vô hướng, chưa phải vector.
