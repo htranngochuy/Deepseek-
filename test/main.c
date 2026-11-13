@@ -34,7 +34,7 @@ int main()
             memcmp(REG.x_i, DDR4.i_x[tok], sizeof REG.x_i);
             for (int i = 0; i < N_HC; i++)
                 for (int j = 0; j < D_MODEL; j++)
-                    REG.x_i_flatten[i * D_MODEL + j] == bf16_to_fp32(DDR4.i_x[tok][i][j]);
+                    REG.x_i_flatten[i * D_MODEL + j] = bf16_to_fp32(DDR4.i_x[tok][i][j]);
  
             double ss = 0.0;                                 
             for (int k = 0; k < N_FLAT; k++) ss += (double)REG.y_i[k] * REG.y_i[k];

@@ -1,4 +1,3 @@
-# Dat file nay o thu muc goc DA1 (cung cap voi include/, source/, test/)
 CC      = gcc
 CFLAGS  = -O2 -Wall -Wextra -Iinclude
 LDLIBS  = -lm
